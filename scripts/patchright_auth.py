@@ -155,7 +155,7 @@ def authenticate_with_patchright(
     try:
         from patchright.sync_api import sync_playwright
     except ImportError:
-        print("❌ Patchright not installed. Run: pip install patchright && patchright install chromium")
+        print("❌ Patchright not installed. Run: uv sync && uv run patchright install chromium")
         return False, None, None
 
     # Find real Chrome executable - always use real Chrome

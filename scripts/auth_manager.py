@@ -316,13 +316,13 @@ class AuthManager:
             print("   Chrome for Testing is blocked by Google's security checks.")
             print()
             print("   To install Patchright:")
-            print("   pip install patchright && patchright install chromium")
+            print("   uv sync && uv run patchright install chromium")
             return False
         except Exception as e:
             print(f"❌ Patchright import error: {e}")
             print()
             print("   Please reinstall Patchright:")
-            print("   pip install --upgrade patchright && patchright install chromium")
+            print("   uv sync && uv run patchright install chromium")
             return False
 
         try:
@@ -362,8 +362,8 @@ class AuthManager:
             print()
             print("   Please ensure:")
             print("   1. Google Chrome is installed on your system")
-            print("   2. Patchright is properly installed: pip install patchright")
-            print("   3. Patchright browser is installed: patchright install chromium")
+            print("   2. Patchright is properly installed: uv sync")
+            print("   3. Patchright browser is installed: uv run patchright install chromium")
             return False
 
     def _setup_with_agent_browser(self, service: str):

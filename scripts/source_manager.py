@@ -297,14 +297,118 @@ class SourceManager:
         """Smart routing based on URL pattern."""
         if self._is_zlibrary_url(url):
             return await self.add_from_zlibrary(url, notebook_id)
-        raise ValueError(f"Unsupported URL: {url}")
+        if not notebook_id:
+            return {
+                "success": False,
+                "error": "Notebook ID is required for non-Z-Library URLs.",
+                "recovery": "Use --notebook-id, --use-active, or --create-new",
+            }
+
+        async with NotebookLMWrapper() as wrapper:
+            try:
+                result = await wrapper.add_url(notebook_id, url)
+                source_id = result.get("source_id")
+                if source_id:
+                    await self._wait_for_sources_ready_async(wrapper, notebook_id, [source_id])
+                return {
+                    "success": True,
+                    "notebook_id": notebook_id,
+                    "source_id": source_id,
+                    "title": result.get("title", url),
+                    "source_type": result.get("source_type", "url"),
+                }
+            except NotebookLMError as e:
+                return {
+                    "success": False,
+                    "error": e.message,
+                    "recovery": e.recovery,
+                }
+
+    async def add_from_drive(
+        self,
+        document_id: str,
+        notebook_id: str,
+        title: str = "Drive Document",
+        doc_type: str = "doc",
+    ) -> dict:
+        """Add a Google Drive source to NotebookLM."""
+        async with NotebookLMWrapper() as wrapper:
+            try:
+                result = await wrapper.add_drive(
+                    notebook_id=notebook_id,
+                    document_id=document_id,
+                    title=title,
+                    doc_type=doc_type,
+                )
+                source_id = result.get("source_id")
+                if source_id:
+                    await self._wait_for_sources_ready_async(wrapper, notebook_id, [source_id])
+                return {
+                    "success": True,
+                    "notebook_id": notebook_id,
+                    "source_id": source_id,
+                    "title": result.get("title", title),
+                    "source_type": result.get("source_type", "drive"),
+                }
+            except NotebookLMError as e:
+                return {
+                    "success": False,
+                    "error": e.message,
+                    "recovery": e.recovery,
+                }
+
+    async def list_stale_sources(self, notebook_id: str) -> dict:
+        """List stale sources that may require refresh/sync."""
+        async with NotebookLMWrapper() as wrapper:
+            sources = await wrapper.list_sources(notebook_id)
+            stale = []
+            for src in sources:
+                sid = src.get("source_id")
+                if not sid:
+                    continue
+                freshness = await wrapper.check_source_freshness(notebook_id, sid)
+                if not freshness.get("is_fresh", True):
+                    stale.append(src)
+            return {
+                "notebook_id": notebook_id,
+                "stale_count": len(stale),
+                "stale_sources": stale,
+            }
+
+    async def sync_sources(self, notebook_id: str, source_ids: Optional[List[str]] = None) -> dict:
+        """Sync specific sources or all stale sources."""
+        async with NotebookLMWrapper() as wrapper:
+            if not source_ids:
+                sources = await wrapper.list_sources(notebook_id)
+                source_ids = []
+                for src in sources:
+                    sid = src.get("source_id")
+                    if not sid:
+                        continue
+                    freshness = await wrapper.check_source_freshness(notebook_id, sid)
+                    if not freshness.get("is_fresh", True):
+                        source_ids.append(sid)
+
+            synced = []
+            for sid in source_ids:
+                result = await wrapper.sync_source(notebook_id, sid)
+                synced.append(result)
+
+            return {
+                "notebook_id": notebook_id,
+                "synced_count": len(synced),
+                "synced_sources": synced,
+            }
 
 
 async def async_main():
     parser = argparse.ArgumentParser(description="Add sources to NotebookLM")
-    parser.add_argument("command", choices=["add", "sync"], help="Command to run")
+    parser.add_argument("command", choices=["add", "sync", "stale", "sync-drive"], help="Command to run")
     parser.add_argument("--url", help="Source URL")
+    parser.add_argument("--drive", help="Google Drive document ID")
     parser.add_argument("--file", help="Local file path")
+    parser.add_argument("--title", help="Optional source title for drive/text")
+    parser.add_argument("--doc-type", default="doc", choices=["doc", "slides", "sheets", "pdf"], help="Drive document type")
     parser.add_argument("--notebook-id", help="Existing notebook ID")
     parser.add_argument("--use-active", action="store_true",
                         help="Upload to currently active notebook")
@@ -317,6 +421,7 @@ async def async_main():
                         help="Show sync plan without executing")
     parser.add_argument("--rebuild", action="store_true",
                         help="Force rebuild tracking file (re-hash all files)")
+    parser.add_argument("--source-ids", help="Comma-separated source IDs for sync-drive")
 
     args = parser.parse_args()
 
@@ -342,13 +447,32 @@ async def async_main():
             # For URLs, derive title from URL
             file_title = Path(args.url).stem or "Untitled"
             notebook_id, create_new = _resolve_notebook_target(args, file_title)
+            if create_new:
+                async with NotebookLMWrapper() as wrapper:
+                    nb_result = await wrapper.create_notebook(file_title)
+                    notebook_id = nb_result["id"]
+                print(f"📓 Created new notebook: {file_title}")
             result = await manager.add_from_url(args.url, notebook_id)
+        elif args.drive:
+            file_title = (args.title or "Drive Document").strip()
+            notebook_id, create_new = _resolve_notebook_target(args, file_title)
+            if create_new:
+                async with NotebookLMWrapper() as wrapper:
+                    nb_result = await wrapper.create_notebook(file_title)
+                    notebook_id = nb_result["id"]
+                print(f"📓 Created new notebook: {file_title}")
+            result = await manager.add_from_drive(
+                document_id=args.drive,
+                notebook_id=notebook_id,
+                title=args.title or "Drive Document",
+                doc_type=args.doc_type,
+            )
         elif args.file:
             file_title = Path(args.file).stem
             notebook_id, create_new = _resolve_notebook_target(args, file_title)
             result = await manager.add_from_file(Path(args.file), notebook_id)
         else:
-            raise SystemExit("Provide --url or --file")
+            raise SystemExit("Provide --url, --drive, or --file")
 
         print(json.dumps(result, indent=2))
 
@@ -407,6 +531,38 @@ async def async_main():
             dry_run=args.dry_run,
         )
 
+        print(json.dumps(result, indent=2))
+
+    elif args.command == "stale":
+        if args.notebook_id:
+            notebook_id = args.notebook_id
+        else:
+            library = NotebookLibrary()
+            active = library.get_active_notebook()
+            if not active:
+                print("❌ No active notebook. Use --notebook-id or set an active notebook.", file=sys.stderr)
+                raise SystemExit(1)
+            notebook_id = extract_notebook_id(active.get("url", "")) or active.get("id")
+
+        result = await manager.list_stale_sources(notebook_id)
+        print(json.dumps(result, indent=2))
+
+    elif args.command == "sync-drive":
+        if args.notebook_id:
+            notebook_id = args.notebook_id
+        else:
+            library = NotebookLibrary()
+            active = library.get_active_notebook()
+            if not active:
+                print("❌ No active notebook. Use --notebook-id or set an active notebook.", file=sys.stderr)
+                raise SystemExit(1)
+            notebook_id = extract_notebook_id(active.get("url", "")) or active.get("id")
+
+        source_ids = None
+        if args.source_ids:
+            source_ids = [sid.strip() for sid in args.source_ids.split(",") if sid.strip()]
+
+        result = await manager.sync_sources(notebook_id, source_ids=source_ids)
         print(json.dumps(result, indent=2))
 
 

@@ -86,7 +86,7 @@ Query Google NotebookLM for source-grounded, citation-backed answers.
 ## Environment
 
 All dependencies and authentication are handled automatically:
-- First run creates `.venv` and installs Python/Node.js dependencies
+- First run creates `.venv` with `uv venv` and syncs Python/Node.js dependencies
 - If Google auth is missing or expired, a browser window opens automatically
 - No manual pre-flight steps required
 

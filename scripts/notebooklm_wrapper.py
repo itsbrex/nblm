@@ -9,7 +9,7 @@ import json
 import re
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 
 from notebooklm import NotebookLMClient
 
@@ -145,6 +145,26 @@ class NotebookLMWrapper:
         self._client = await NotebookLMClient.from_storage(str(self.auth_file))
         await self._client.__aenter__()
 
+    @staticmethod
+    def _extract_first_url(value: Any) -> Optional[str]:
+        """Find the first HTTP(S) URL in nested RPC response payloads."""
+        if isinstance(value, str):
+            if value.startswith("http://") or value.startswith("https://"):
+                return value
+            return None
+        if isinstance(value, dict):
+            for v in value.values():
+                found = NotebookLMWrapper._extract_first_url(v)
+                if found:
+                    return found
+            return None
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                found = NotebookLMWrapper._extract_first_url(item)
+                if found:
+                    return found
+        return None
+
     # === Notebooks API ===
 
     async def create_notebook(self, name: str) -> dict:
@@ -258,6 +278,39 @@ class NotebookLMWrapper:
             }
         return await self._with_retry(_add)
 
+    async def add_drive(
+        self,
+        notebook_id: str,
+        document_id: str,
+        title: str = "Drive Document",
+        doc_type: str = "doc",
+    ) -> dict:
+        """Add a Google Drive source to a notebook."""
+
+        async def _add():
+            from notebooklm.rpc.types import DriveMimeType
+
+            mime_map = {
+                "doc": DriveMimeType.GOOGLE_DOC,
+                "slides": DriveMimeType.GOOGLE_SLIDES,
+                "sheets": DriveMimeType.GOOGLE_SHEETS,
+                "pdf": DriveMimeType.PDF,
+            }
+            mime_type = mime_map.get((doc_type or "doc").lower(), DriveMimeType.GOOGLE_DOC)
+            source = await self._client.sources.add_drive(
+                notebook_id=notebook_id,
+                document_id=document_id,
+                title=title,
+                mime_type=mime_type,
+            )
+            return {
+                "source_id": source.id,
+                "title": source.title,
+                "source_type": source.source_type,
+            }
+
+        return await self._with_retry(_add)
+
     async def list_sources(self, notebook_id: str) -> List[dict]:
         """List all sources in a notebook."""
         async def _list():
@@ -312,6 +365,30 @@ class NotebookLMWrapper:
             }
         return await self._with_retry(_refresh)
 
+    async def check_source_freshness(self, notebook_id: str, source_id: str) -> dict:
+        """Check whether a source is fresh/up-to-date."""
+
+        async def _freshness():
+            is_fresh = await self._client.sources.check_freshness(notebook_id, source_id)
+            return {
+                "source_id": source_id,
+                "is_fresh": bool(is_fresh),
+            }
+
+        return await self._with_retry(_freshness)
+
+    async def sync_source(self, notebook_id: str, source_id: str) -> dict:
+        """Sync a source by triggering refresh."""
+
+        async def _sync():
+            synced = await self._client.sources.refresh(notebook_id, source_id)
+            return {
+                "source_id": source_id,
+                "synced": bool(synced),
+            }
+
+        return await self._with_retry(_sync)
+
     async def get_source_fulltext(self, notebook_id: str, source_id: str) -> dict:
         """Get full indexed text content of a source."""
         async def _fulltext():
@@ -352,6 +429,70 @@ class NotebookLMWrapper:
             # Fallback to browser-based chat
             return await self._fallback_chat(notebook_id, message)
 
+    async def query(
+        self,
+        notebook_id: str,
+        message: str,
+        source_ids: Optional[List[str]] = None,
+        conversation_id: Optional[str] = None,
+    ) -> dict:
+        """Query with optional source filtering and conversation continuation."""
+
+        async def _query():
+            response = await self._client.chat.ask(
+                notebook_id=notebook_id,
+                question=message,
+                source_ids=source_ids,
+                conversation_id=conversation_id,
+            )
+            return {
+                "text": response.answer,
+                "citations": response.references if hasattr(response, "references") else [],
+                "conversation_id": response.conversation_id if hasattr(response, "conversation_id") else None,
+                "turn_number": response.turn_number if hasattr(response, "turn_number") else None,
+                "is_follow_up": response.is_follow_up if hasattr(response, "is_follow_up") else bool(conversation_id),
+            }
+
+        return await self._with_retry(_query)
+
+    async def configure_chat(
+        self,
+        notebook_id: str,
+        goal: str = "default",
+        response_length: str = "default",
+        custom_prompt: Optional[str] = None,
+    ) -> dict:
+        """Configure notebook chat behavior."""
+
+        async def _configure():
+            from notebooklm.rpc.types import ChatGoal, ChatResponseLength
+
+            goal_map = {
+                "default": ChatGoal.DEFAULT,
+                "learning_guide": ChatGoal.LEARNING_GUIDE,
+                "custom": ChatGoal.CUSTOM,
+            }
+            length_map = {
+                "default": ChatResponseLength.DEFAULT,
+                "longer": ChatResponseLength.LONGER,
+                "shorter": ChatResponseLength.SHORTER,
+            }
+            goal_enum = goal_map.get((goal or "default").lower(), ChatGoal.DEFAULT)
+            length_enum = length_map.get((response_length or "default").lower(), ChatResponseLength.DEFAULT)
+            await self._client.chat.configure(
+                notebook_id=notebook_id,
+                goal=goal_enum,
+                response_length=length_enum,
+                custom_prompt=custom_prompt,
+            )
+            return {
+                "notebook_id": notebook_id,
+                "goal": (goal or "default").lower(),
+                "response_length": (response_length or "default").lower(),
+            }
+
+        return await self._with_retry(_configure)
+
     # === Audio/Podcast API ===
 
     async def generate_audio(
@@ -389,7 +530,202 @@ class NotebookLMWrapper:
             }
         return await self._with_retry(_generate)
 
-    async def wait_for_audio(
+    async def generate_video(
+        self,
+        notebook_id: str,
+        instructions: str = "",
+        video_format: str = "EXPLAINER",
+        visual_style: str = "AUTO_SELECT",
+        language: str = "en",
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate video overview from notebook content."""
+
+        async def _generate():
+            from notebooklm.rpc.types import VideoFormat, VideoStyle
+
+            format_map = {
+                "EXPLAINER": VideoFormat.EXPLAINER,
+                "BRIEF": VideoFormat.BRIEF,
+            }
+            style_map = {
+                "AUTO_SELECT": VideoStyle.AUTO_SELECT,
+                "CLASSIC": VideoStyle.CLASSIC,
+                "WHITEBOARD": VideoStyle.WHITEBOARD,
+                "KAWAII": VideoStyle.KAWAII,
+                "ANIME": VideoStyle.ANIME,
+                "WATERCOLOR": VideoStyle.WATERCOLOR,
+                "RETRO_PRINT": VideoStyle.RETRO_PRINT,
+                "HERITAGE": VideoStyle.HERITAGE,
+                "PAPER_CRAFT": VideoStyle.PAPER_CRAFT,
+            }
+
+            status = await self._client.artifacts.generate_video(
+                notebook_id=notebook_id,
+                source_ids=source_ids,
+                language=language or "en",
+                instructions=instructions or None,
+                video_format=format_map.get((video_format or "EXPLAINER").upper(), VideoFormat.EXPLAINER),
+                video_style=style_map.get((visual_style or "AUTO_SELECT").upper(), VideoStyle.AUTO_SELECT),
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def generate_report(
+        self,
+        notebook_id: str,
+        report_format: str = "BRIEFING_DOC",
+        custom_prompt: str = "",
+        language: str = "en",
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate report artifact."""
+
+        async def _generate():
+            from notebooklm.rpc.types import ReportFormat
+
+            normalized = (report_format or "BRIEFING_DOC").strip().upper().replace(" ", "_")
+            fmt_map = {
+                "BRIEFING_DOC": ReportFormat.BRIEFING_DOC,
+                "STUDY_GUIDE": ReportFormat.STUDY_GUIDE,
+                "BLOG_POST": ReportFormat.BLOG_POST,
+                "CUSTOM": ReportFormat.CUSTOM,
+            }
+            fmt = fmt_map.get(normalized, ReportFormat.BRIEFING_DOC)
+            status = await self._client.artifacts.generate_report(
+                notebook_id=notebook_id,
+                report_format=fmt,
+                source_ids=source_ids,
+                language=language or "en",
+                custom_prompt=custom_prompt or None,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def generate_quiz(
+        self,
+        notebook_id: str,
+        question_count: int = 2,
+        difficulty: str = "MEDIUM",
+        focus_prompt: str = "",
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate quiz artifact."""
+
+        async def _generate():
+            from notebooklm.rpc.types import QuizQuantity, QuizDifficulty
+
+            difficulty_map = {
+                "EASY": QuizDifficulty.EASY,
+                "MEDIUM": QuizDifficulty.MEDIUM,
+                "HARD": QuizDifficulty.HARD,
+            }
+            diff = difficulty_map.get((difficulty or "MEDIUM").upper(), QuizDifficulty.MEDIUM)
+
+            if question_count <= 3:
+                quantity = QuizQuantity.FEWER
+            elif question_count >= 8:
+                quantity = QuizQuantity.MORE
+            else:
+                quantity = QuizQuantity.STANDARD
+
+            status = await self._client.artifacts.generate_quiz(
+                notebook_id=notebook_id,
+                source_ids=source_ids,
+                instructions=focus_prompt or None,
+                quantity=quantity,
+                difficulty=diff,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def generate_flashcards(
+        self,
+        notebook_id: str,
+        difficulty: str = "MEDIUM",
+        focus_prompt: str = "",
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate flashcards artifact."""
+
+        async def _generate():
+            from notebooklm.rpc.types import QuizDifficulty
+
+            difficulty_map = {
+                "EASY": QuizDifficulty.EASY,
+                "MEDIUM": QuizDifficulty.MEDIUM,
+                "HARD": QuizDifficulty.HARD,
+            }
+            diff = difficulty_map.get((difficulty or "MEDIUM").upper(), QuizDifficulty.MEDIUM)
+            status = await self._client.artifacts.generate_flashcards(
+                notebook_id=notebook_id,
+                source_ids=source_ids,
+                instructions=focus_prompt or None,
+                difficulty=diff,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def generate_mind_map(
+        self,
+        notebook_id: str,
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate and save a mind map note."""
+
+        async def _generate():
+            result = await self._client.artifacts.generate_mind_map(
+                notebook_id=notebook_id,
+                source_ids=source_ids,
+            )
+            return {
+                "artifact_id": result.get("note_id"),
+                "mind_map": result.get("mind_map"),
+                "status": "completed",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def generate_data_table(
+        self,
+        notebook_id: str,
+        description: str,
+        language: str = "en",
+        source_ids: Optional[List[str]] = None,
+    ) -> dict:
+        """Generate data table artifact."""
+
+        async def _generate():
+            status = await self._client.artifacts.generate_data_table(
+                notebook_id=notebook_id,
+                source_ids=source_ids,
+                language=language or "en",
+                instructions=description,
+            )
+            return {
+                "task_id": status.task_id,
+                "status": "started",
+            }
+
+        return await self._with_retry(_generate)
+
+    async def wait_for_artifact(
         self,
         notebook_id: str,
         task_id: str,
@@ -411,6 +747,21 @@ class NotebookLMWrapper:
                 "error": getattr(final, 'error', None),
             }
         return await self._with_retry(_wait)
+
+    async def wait_for_audio(
+        self,
+        notebook_id: str,
+        task_id: str,
+        timeout: int = 600,
+        poll_interval: int = 10,
+    ) -> dict:
+        """Backward-compatible alias for waiting on artifact completion."""
+        return await self.wait_for_artifact(
+            notebook_id=notebook_id,
+            task_id=task_id,
+            timeout=timeout,
+            poll_interval=poll_interval,
+        )
 
     async def download_audio(
         self,
@@ -594,20 +945,26 @@ class NotebookLMWrapper:
             return str(path)
         return await self._with_retry(_download)
 
-    async def get_audio_status(self, notebook_id: str, task_id: str) -> dict:
-        """Get status of an audio generation task."""
+    async def get_task_status(self, notebook_id: str, task_id: str) -> dict:
+        """Get status of an artifact generation task."""
+
         async def _status():
             status = await self._client.artifacts.poll_status(notebook_id, task_id)
             return {
                 "task_id": task_id,
-                "status": getattr(status, 'status', 'unknown'),
-                "is_complete": getattr(status, 'is_complete', False),
-                "is_failed": getattr(status, 'is_failed', False),
-                "progress": getattr(status, 'progress', None),
-                "url": getattr(status, 'url', None),
-                "error": getattr(status, 'error', None),
+                "status": getattr(status, "status", "unknown"),
+                "is_complete": getattr(status, "is_complete", False),
+                "is_failed": getattr(status, "is_failed", False),
+                "progress": getattr(status, "progress", None),
+                "url": getattr(status, "url", None),
+                "error": getattr(status, "error", None),
             }
+
         return await self._with_retry(_status)
+
+    async def get_audio_status(self, notebook_id: str, task_id: str) -> dict:
+        """Backward-compatible alias for generation task status."""
+        return await self.get_task_status(notebook_id, task_id)
 
     async def download_artifact(
         self,
@@ -615,6 +972,7 @@ class NotebookLMWrapper:
         artifact_id: str,
         output_path: str,
         artifact_type: str = "audio",
+        output_format: str = "json",
     ) -> str:
         """Download any artifact type to local path.
 
@@ -630,17 +988,213 @@ class NotebookLMWrapper:
                 "video": self._client.artifacts.download_video,
                 "slide-deck": self._client.artifacts.download_slide_deck,
                 "infographic": self._client.artifacts.download_infographic,
+                "report": self._client.artifacts.download_report,
+                "mind-map": self._client.artifacts.download_mind_map,
+                "data-table": self._client.artifacts.download_data_table,
+                "quiz": self._client.artifacts.download_quiz,
+                "flashcards": self._client.artifacts.download_flashcards,
             }
             method = download_methods.get(artifact_type)
             if not method:
                 raise NotebookLMError(
                     f"Unknown artifact type: {artifact_type}",
                     code="INVALID_TYPE",
-                    recovery="Use: audio, video, slide-deck, or infographic",
+                    recovery="Use: audio, video, slide-deck, infographic, report, mind-map, data-table, quiz, or flashcards",
                 )
-            path = await method(notebook_id, output_path, artifact_id=artifact_id)
+            kwargs: Dict[str, Any] = {"artifact_id": artifact_id}
+            if artifact_type in {"quiz", "flashcards"}:
+                kwargs["output_format"] = output_format
+            path = await method(notebook_id, output_path, **kwargs)
             return str(path)
         return await self._with_retry(_download)
+
+    async def revise_slide_deck(self, artifact_id: str, slide_instructions: List[dict]) -> dict:
+        """Revise an existing slide deck artifact.
+
+        notebooklm-py does not currently expose this API.
+        """
+        raise NotebookLMError(
+            "Slide deck revision is not supported by the installed notebooklm-py version.",
+            code="UNSUPPORTED",
+            recovery="Update notebooklm-py when revise_slide_deck support is available.",
+        )
+
+    # === Research API ===
+
+    async def start_research(
+        self,
+        notebook_id: str,
+        query: str,
+        source: str = "web",
+        mode: str = "fast",
+    ) -> dict:
+        """Start NotebookLM research task."""
+
+        async def _start():
+            result = await self._client.research.start(
+                notebook_id=notebook_id,
+                query=query,
+                source=source,
+                mode=mode,
+            )
+            return result or {}
+
+        return await self._with_retry(_start)
+
+    async def poll_research(
+        self,
+        notebook_id: str,
+    ) -> dict:
+        """Poll research status."""
+
+        async def _poll():
+            return await self._client.research.poll(notebook_id) or {"status": "no_research"}
+
+        return await self._with_retry(_poll)
+
+    async def import_research_sources(
+        self,
+        notebook_id: str,
+        task_id: str,
+        source_indices: Optional[List[int]] = None,
+    ) -> dict:
+        """Import discovered research sources by task ID."""
+
+        async def _import():
+            poll = await self._client.research.poll(notebook_id)
+            if not poll or poll.get("status") == "no_research":
+                raise NotebookLMError(
+                    "Research task not found.",
+                    code="NOT_FOUND",
+                    recovery="Run research status first and confirm task ID.",
+                )
+
+            sources = poll.get("sources", [])
+            if source_indices is not None:
+                chosen = []
+                for idx in source_indices:
+                    if 0 <= idx < len(sources):
+                        chosen.append(sources[idx])
+                sources = chosen
+
+            imported = await self._client.research.import_sources(
+                notebook_id=notebook_id,
+                task_id=task_id,
+                sources=sources,
+            )
+            return {
+                "notebook_id": notebook_id,
+                "task_id": task_id,
+                "imported_count": len(imported or []),
+                "imported_sources": imported or [],
+            }
+
+        return await self._with_retry(_import)
+
+    # === Sharing API ===
+
+    async def get_share_status(self, notebook_id: str) -> dict:
+        """Get notebook sharing status."""
+
+        async def _status():
+            status = await self._client.sharing.get_status(notebook_id)
+            collaborators = []
+            for user in getattr(status, "shared_users", []):
+                collaborators.append(
+                    {
+                        "email": getattr(user, "email", ""),
+                        "role": getattr(getattr(user, "permission", None), "name", "VIEWER").lower(),
+                    }
+                )
+            return {
+                "notebook_id": notebook_id,
+                "is_public": bool(getattr(status, "is_public", False)),
+                "access": getattr(getattr(status, "access", None), "name", "RESTRICTED").lower(),
+                "view_level": getattr(getattr(status, "view_level", None), "name", "FULL_NOTEBOOK").lower(),
+                "share_url": getattr(status, "share_url", None),
+                "collaborators": collaborators,
+            }
+
+        return await self._with_retry(_status)
+
+    async def set_public_access(self, notebook_id: str, is_public: bool) -> dict:
+        """Enable/disable public access for a notebook."""
+
+        async def _set():
+            status = await self._client.sharing.set_public(notebook_id, is_public)
+            return {
+                "notebook_id": notebook_id,
+                "is_public": bool(getattr(status, "is_public", False)),
+                "share_url": getattr(status, "share_url", None),
+            }
+
+        return await self._with_retry(_set)
+
+    async def invite_collaborator(
+        self,
+        notebook_id: str,
+        email: str,
+        role: str = "viewer",
+        notify: bool = True,
+        welcome_message: str = "",
+    ) -> dict:
+        """Invite a collaborator to a notebook."""
+
+        async def _invite():
+            from notebooklm.rpc.types import SharePermission
+
+            role_map = {
+                "viewer": SharePermission.VIEWER,
+                "editor": SharePermission.EDITOR,
+            }
+            permission = role_map.get((role or "viewer").lower(), SharePermission.VIEWER)
+            status = await self._client.sharing.add_user(
+                notebook_id=notebook_id,
+                email=email,
+                permission=permission,
+                notify=notify,
+                welcome_message=welcome_message or "",
+            )
+            return {
+                "notebook_id": notebook_id,
+                "email": email,
+                "role": permission.name.lower(),
+                "is_public": bool(getattr(status, "is_public", False)),
+            }
+
+        return await self._with_retry(_invite)
+
+    # === Export API ===
+
+    async def export_artifact(
+        self,
+        notebook_id: str,
+        artifact_id: str,
+        export_type: str = "docs",
+        title: str = "Export",
+    ) -> dict:
+        """Export an artifact to Google Docs/Sheets."""
+
+        async def _export():
+            from notebooklm.rpc.types import ExportType
+
+            export_enum = ExportType.DOCS if (export_type or "docs").lower() == "docs" else ExportType.SHEETS
+            result = await self._client.artifacts.export(
+                notebook_id=notebook_id,
+                artifact_id=artifact_id,
+                title=title,
+                export_type=export_enum,
+            )
+            url = self._extract_first_url(result)
+            return {
+                "notebook_id": notebook_id,
+                "artifact_id": artifact_id,
+                "export_type": (export_type or "docs").lower(),
+                "url": url,
+                "raw_result": result,
+            }
+
+        return await self._with_retry(_export)
 
     # === Browser Fallback ===
 

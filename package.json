@@ -8,6 +8,7 @@
   },
   "scripts": {
     "daemon": "node node_modules/agent-browser/dist/daemon.js",
-    "install-browsers": "npx playwright install chromium"
+    "install-browsers": "npx playwright install chromium",
+    "plans": "node scripts/plans.mjs"
   }
 }

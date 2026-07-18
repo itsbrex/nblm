@@ -76,8 +76,9 @@ class SourceManagerTests(unittest.TestCase):
         self.assertEqual(result, {"ok": True})
         add_zlib.assert_called_once()
 
-        with self.assertRaises(ValueError):
-            asyncio.run(manager.add_from_url("https://example.com/book/123"))
+        result = asyncio.run(manager.add_from_url("https://example.com/book/123"))
+        self.assertFalse(result["success"])
+        self.assertIn("Notebook ID is required", result["error"])
 
     def test_add_from_zlibrary_requires_auth(self):
         """Test that add_from_zlibrary raises RuntimeError when not authenticated (async)."""

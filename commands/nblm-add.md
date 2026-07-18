@@ -9,6 +9,9 @@ Add an existing NotebookLM notebook to your local library for easy access.
 $IF($ARGUMENTS,
   Run: !`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py notebook_manager.py add $ARGUMENTS`
 
+  If user wants to create a brand new notebook (not add existing URL), use:
+  !`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py notebook create "<name>"`
+
   Confirm the notebook was added and show its ID.,
 
   ERROR: Please provide notebook details.

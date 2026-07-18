@@ -23,15 +23,15 @@ Manage multiple Google accounts for NotebookLM access.
 Based on the user's request, run the appropriate command:
 
 For listing accounts (default):
-!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py auth_manager.py accounts list`
+!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py login accounts list`
 
 For adding a new account:
-!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py auth_manager.py accounts add`
+!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py login accounts add`
 
 For switching accounts (replace IDENTIFIER with the index or email):
-!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py auth_manager.py accounts switch IDENTIFIER`
+!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py login accounts switch IDENTIFIER`
 
 For removing accounts (replace IDENTIFIER with the index or email):
-!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py auth_manager.py accounts remove IDENTIFIER`
+!`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py login accounts remove IDENTIFIER`
 
 After the command completes, summarize the result for the user.

@@ -245,7 +245,7 @@ def check_api_usage(api_endpoint):
 - Switch accounts if needed
 
 ### 4. Error Handling
-- Always use run.py to prevent venv issues
+- Always use run.py to prevent uv environment issues
 - Check auth before operations
 - Implement retry logic
 - Have fallback notebooks ready
@@ -308,7 +308,7 @@ for q in questions:
 
 ## Tips and Tricks
 
-1. **Always use run.py** - Prevents all venv issues
+1. **Always use run.py** - Prevents all uv environment issues
 2. **Ask for metadata** - Never guess notebook contents
 3. **Use verbose questions** - Include all context
 4. **Follow up automatically** - When you see the prompt

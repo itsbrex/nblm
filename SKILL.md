@@ -10,7 +10,7 @@ Query Google NotebookLM for source-grounded, citation-backed answers.
 ## Environment
 
 All dependencies and authentication are handled automatically by `run.py`:
-- First run creates `.venv` and installs Python/Node.js dependencies
+- First run creates `.venv` via `uv venv`, syncs Python deps via `uv sync`, and installs Node.js dependencies
 - If Google auth is missing or expired, a browser window opens automatically
 - No manual pre-flight steps required
 
@@ -19,6 +19,33 @@ All dependencies and authentication are handled automatically by `run.py`:
 ## Usage
 
 `/nblm <command> [args]`
+
+### Preferred Grouped Syntax (Parity Mode)
+
+Use grouped commands through `nblm_cli.py` (legacy flat commands still work):
+
+```bash
+python scripts/run.py nblm_cli.py notebook list
+python scripts/run.py nblm_cli.py source add --url "https://example.com" --use-active
+python scripts/run.py nblm_cli.py query ask "Summarize chapter 2" --source-ids src1,src2
+python scripts/run.py nblm_cli.py research start "AI safety" --mode deep
+python scripts/run.py nblm_cli.py report create --wait --output ./report.md
+python scripts/run.py nblm_cli.py share status
+python scripts/run.py nblm_cli.py export create <artifact-id> --type docs
+```
+
+Main groups:
+`login`, `notebook`, `source`, `query`, `research`, `audio`, `report`, `quiz`,
+`flashcards`, `mindmap`, `slides`, `infographic`, `video`, `data-table`,
+`alias`, `config`, `doctor`, `setup`, `skill`, `share`, `export`, `download`.
+
+Verb-first aliases are also supported:
+
+```bash
+python scripts/run.py nblm_cli.py create report --wait --output ./report.md
+python scripts/run.py nblm_cli.py list notebook
+python scripts/run.py nblm_cli.py stale source --notebook-id <id>
+```
 
 ## Commands
 
@@ -314,13 +341,13 @@ python scripts/run.py notebook_manager.py list
 python scripts/run.py ask_question.py --question "..."
 
 # ❌ WRONG - Never call directly:
-python scripts/auth_manager.py status  # Fails without venv!
+python scripts/auth_manager.py status  # Fails without uv-managed env!
 ```
 
 The `run.py` wrapper automatically:
-1. Creates `.venv` if needed
-2. Installs all dependencies
-3. Activates environment
+1. Creates `.venv` with `uv venv` if needed
+2. Syncs all Python dependencies with `uv sync`
+3. Uses the `.venv` interpreter
 4. Executes script properly
 
 ## Core Workflow
@@ -514,7 +541,7 @@ python scripts/run.py auth_manager.py watchdog-status
 ## Environment Management
 
 The virtual environment is automatically managed:
-- First run creates `.venv` automatically
+- First run creates `.venv` with `uv venv`
 - Dependencies install automatically
 - Node.js dependencies install automatically
 - agent-browser daemon starts on demand and keeps browser state in memory
@@ -525,11 +552,34 @@ The virtual environment is automatically managed:
 
 Manual setup (only if automatic fails):
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+uv sync
 npm install
 npm run install-browsers
+```
+
+Dependency migration (`requirements.txt` → uv project):
+```bash
+# 1) Create pyproject.toml
+uv init --bare
+
+# 2) Import runtime dependencies
+uv add -r requirements.txt
+
+# 3) Import dev dependencies if present
+uv add --dev -r requirements-dev.txt
+
+# Validate imports
+uv pip freeze
+
+# 4) Remove old requirements files
+rm requirements.txt requirements-dev.txt
+
+# 5) Ongoing dependency management
+uv add requests
+uv add --dev pytest
+uv remove requests
 ```
 
 ## Data Storage

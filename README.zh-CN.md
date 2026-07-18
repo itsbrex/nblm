@@ -96,11 +96,22 @@ python $env:USERPROFILE\.nblm\scripts\run.py init --list
 ### 首次运行
 
 首次使用时，nblm 会自动：
-- 创建隔离的 Python 环境（`.venv`）
-- 安装 Python 和 Node.js 依赖
+- 通过 `uv venv` 创建隔离的 Python 环境（`.venv`）
+- 通过 `uv sync` 同步 Python 依赖
+- 安装 Node.js 依赖
 - 按需启动 agent-browser 守护进程
 
 无需手动设置。如果缺少 Playwright 浏览器，在技能文件夹中运行 `npm run install-browsers`。
+
+手动设置（自动流程失败时）：
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv sync
+npm install
+npm run install-browsers
+```
 
 ---
 

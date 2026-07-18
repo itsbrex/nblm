@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Migrated Python environment management to uv (`uv venv` + `uv sync`) across runtime bootstrap scripts
+- Replaced pip-based dependency install guidance with uv commands in docs and auth troubleshooting output
+- Removed `requirements.txt` in favor of `pyproject.toml` + `uv.lock`
+
 ## [2.1.0] - 2026-01-24
 
 ### Changed

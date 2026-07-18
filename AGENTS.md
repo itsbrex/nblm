@@ -28,15 +28,38 @@ python scripts/run.py ask_question.py --question "..."
 python scripts/auth_manager.py status
 ```
 
-The `run.py` wrapper automatically creates `.venv`, installs Python deps, and installs Node.js deps if needed.
+The `run.py` wrapper automatically creates `.venv` with `uv venv`, syncs Python deps with `uv sync`, and installs Node.js deps if needed.
 
 ### Manual Environment Setup (if automatic fails)
 ```bash
-python -m venv .venv
+uv venv .venv
 source .venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+uv sync
 npm install
 npm run install-browsers
+```
+
+### Dependency Migration (requirements.txt → uv)
+```bash
+# 1. Create pyproject.toml (minimal)
+uv init --bare
+
+# 2. Import runtime dependencies
+uv add -r requirements.txt
+
+# 3. Import dev dependencies (if present)
+uv add --dev -r requirements-dev.txt
+
+# Validate imported dependencies
+uv pip freeze
+
+# 4. Remove old requirements files
+rm requirements.txt requirements-dev.txt
+
+# 5. Ongoing dependency management
+uv add requests
+uv add --dev pytest
+uv remove requests
 ```
 
 ### Common Script Commands
@@ -66,21 +89,45 @@ python scripts/run.py source_manager.py add --file "/path/to/book.pdf"
 python scripts/run.py cleanup_manager.py                    # Preview
 python scripts/run.py cleanup_manager.py --confirm          # Execute
 python scripts/run.py cleanup_manager.py --preserve-library # Keep notebooks
+
+# Unified grouped CLI (preferred parity surface)
+python scripts/run.py nblm_cli.py notebook list
+python scripts/run.py nblm_cli.py source add --url "https://example.com" --use-active
+python scripts/run.py nblm_cli.py query ask "What changed?" --timeout 120
+python scripts/run.py nblm_cli.py research start "AI trends" --mode deep
+python scripts/run.py nblm_cli.py report create --wait --output ./report.md
+python scripts/run.py nblm_cli.py share status
+python scripts/run.py nblm_cli.py export create <artifact-id> --type docs
+
+# Verb-first aliases
+python scripts/run.py nblm_cli.py create report --wait --output ./report.md
+python scripts/run.py nblm_cli.py list notebook
 ```
 
 ## Architecture
 
 ```
 scripts/
-├── run.py                # Entry point wrapper - handles venv and npm deps
+├── run.py                # Entry point wrapper - handles uv + npm deps
+├── nblm_cli.py           # Unified grouped + legacy + verb-first CLI router
 ├── ask_question.py       # Core query logic - uses agent-browser client
 ├── auth_manager.py       # Multi-service authentication and session persistence
 ├── notebook_manager.py   # CRUD operations for notebook library (library.json)
 ├── source_manager.py     # Source ingestion (file/Z-Library)
+├── artifact_manager.py   # Artifact generation/list/status/download/delete
+├── query_manager.py      # Grouped query commands (conversation/source filters)
+├── research_manager.py   # Research start/status/import
+├── share_manager.py      # Notebook sharing commands
+├── export_manager.py     # Artifact export to Docs/Sheets
+├── alias_manager.py      # Alias set/get/list/delete
+├── config_manager.py     # User config show/get/set
+├── doctor_manager.py     # Diagnostics and health checks
+├── setup_manager.py      # setup add/remove/list compatibility layer
+├── skill_manager.py      # skill install/uninstall/update/list/show
 ├── agent_browser_client.py # Unix socket client for agent-browser daemon
 ├── cleanup_manager.py    # Data cleanup with preservation options
 ├── config.py             # Configuration management
-└── setup_environment.py  # Automatic venv and dependency installation
+└── setup_environment.py  # Automatic uv venv and dependency installation
 
 scripts/zlibrary/
 ├── downloader.py         # Z-Library download automation
@@ -101,6 +148,8 @@ references/               # Extended documentation
 
 **Key Flow:** `run.py` → ensures Python/Node deps → scripts use `NotebookLMWrapper` (async) → notebooklm-py API → agent-browser fallback
 
+**Python dependency source of truth:** `pyproject.toml` + `uv.lock`
+
 ## Key Dependencies
 
 ### Foundation Libraries (Project Decision)
@@ -112,7 +161,7 @@ This skill uses **two foundation libraries** for NotebookLM integration:
    - Used for: Authentication, token refresh, browser fallback for uploads, Z-Library automation
    - Key commands: `snapshot`, `click`, `fill`, `upload`, `navigate`, `evaluate`
 
-2. **notebooklm-py** (pip - teng-lin/notebooklm-py)
+2. **notebooklm-py** (PyPI package - teng-lin/notebooklm-py)
    - Python async API client for Google NotebookLM
    - Used for: All NotebookLM API operations (notebooks, sources, chat)
    - Key APIs:

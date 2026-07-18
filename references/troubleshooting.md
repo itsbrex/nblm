@@ -111,7 +111,9 @@ python scripts/run.py auth_manager.py status
 
 # Or manual install if needed
 cd ~/.claude/skills/notebooklm
+uv venv .venv
 source .venv/bin/activate
+uv sync
 npm install
 npm run install-browsers
 ```
@@ -192,8 +194,8 @@ ModuleNotFoundError: No module named '...'
 python scripts/run.py [any_script].py
 
 # run.py will:
-# 1. Create .venv if missing
-# 2. Install dependencies
+# 1. Create .venv with uv venv if missing
+# 2. Sync dependencies with uv sync
 # 3. Run the script
 ```
 

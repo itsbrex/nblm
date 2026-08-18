@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import subprocess
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -44,11 +45,16 @@ SKIP_AUTH_CHECK = {
     "cleanup_manager.py",   # Cleanup doesn't need auth
     "setup_environment.py", # Setup script
     "init_platform.py",     # Platform initialization
+    "alias_manager.py",     # Local alias state only
+    "config_manager.py",    # Local config state only
+    "doctor_manager.py",    # Diagnostics can run unauthenticated
+    "setup_manager.py",     # Platform integration helpers
+    "skill_manager.py",     # Local install/uninstall metadata
 }
 
 # Timeouts for long-running operations (in seconds)
 TIMEOUT_VENV_SETUP = 600      # 10 minutes
-TIMEOUT_PIP_INSTALL = 600     # 10 minutes
+TIMEOUT_UV_SYNC = 600         # 10 minutes
 TIMEOUT_NPM_INSTALL = 600     # 10 minutes
 TIMEOUT_AUTH_SETUP = 600      # 10 minutes (user interaction)
 
@@ -141,21 +147,40 @@ def get_venv_python():
     return venv_python
 
 
+def _get_uv_command():
+    """Get the uv command for the current platform."""
+    if os.name == "nt":
+        return "uv.exe"
+    return "uv"
+
+
+def ensure_uv_available():
+    """Ensure uv is installed and available in PATH."""
+    uv_cmd = _get_uv_command()
+    if shutil.which(uv_cmd):
+        return uv_cmd
+
+    print("❌ uv is required but was not found in PATH.")
+    print("   Install uv: https://docs.astral.sh/uv/getting-started/installation/")
+    sys.exit(1)
+
+
 def ensure_venv():
     """Ensure virtual environment exists"""
     skill_dir = Path(__file__).parent.parent
     venv_dir = skill_dir / ".venv"
-    setup_script = skill_dir / "scripts" / "setup_environment.py"
+    venv_python = get_venv_python()
+    uv_cmd = ensure_uv_available()
 
-    # Check if venv exists
-    if not venv_dir.exists():
-        print("🔧 First-time setup: Creating virtual environment...")
+    # Check if venv interpreter exists
+    if not venv_python.exists():
+        print("🔧 First-time setup: Creating virtual environment with uv...")
         print("   This may take a minute...")
 
-        # Run setup with system Python
         try:
             result = subprocess.run(
-                [sys.executable, str(setup_script)],
+                [uv_cmd, "venv", str(venv_dir)],
+                cwd=str(skill_dir),
                 timeout=TIMEOUT_VENV_SETUP
             )
         except subprocess.TimeoutExpired:
@@ -168,58 +193,61 @@ def ensure_venv():
 
         print("✅ Environment ready!")
 
-    return get_venv_python()
+    return venv_python
 
 
-def _get_requirements_hash(requirements_file: Path) -> str:
-    """Compute SHA256 hash of requirements.txt"""
-    if not requirements_file.exists():
-        return ""
-    content = requirements_file.read_bytes()
-    return hashlib.sha256(content).hexdigest()
+def _get_python_deps_hash(pyproject_file: Path, lock_file: Path) -> str:
+    """Compute SHA256 hash of Python dependency manifests."""
+    digest = hashlib.sha256()
+    for manifest in (pyproject_file, lock_file):
+        if manifest.exists():
+            digest.update(manifest.read_bytes())
+    return digest.hexdigest()
 
 
-def ensure_pip_deps():
-    """Ensure pip dependencies are installed and up-to-date"""
+def ensure_python_deps():
+    """Ensure Python dependencies are installed and up-to-date via uv."""
     skill_dir = Path(__file__).parent.parent
     venv_dir = skill_dir / ".venv"
-    requirements_file = skill_dir / "requirements.txt"
-    hash_file = venv_dir / ".requirements.hash"
+    pyproject_file = skill_dir / "pyproject.toml"
+    lock_file = skill_dir / "uv.lock"
+    hash_file = venv_dir / ".python-deps.hash"
 
-    if not requirements_file.exists():
-        return  # No requirements file
+    if not pyproject_file.exists():
+        print("❌ pyproject.toml not found; cannot sync Python dependencies with uv.")
+        sys.exit(1)
 
-    current_hash = _get_requirements_hash(requirements_file)
-
-    # Check if hash matches
-    if hash_file.exists():
-        stored_hash = hash_file.read_text().strip()
-        if stored_hash == current_hash:
-            return  # Dependencies up-to-date
-
-    # Install/update dependencies
-    print("📦 Installing Python dependencies...")
-    venv_python = get_venv_python()
-    try:
-        result = subprocess.run(
-            [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file), "--quiet"],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_PIP_INSTALL
-        )
-    except subprocess.TimeoutExpired:
-        print(f"⚠️ pip install timed out after {TIMEOUT_PIP_INSTALL}s")
-        print("   Try running manually: pip install -r requirements.txt")
+    current_hash = _get_python_deps_hash(pyproject_file, lock_file)
+    if hash_file.exists() and hash_file.read_text().strip() == current_hash:
         return
 
+    print("📦 Syncing Python dependencies with uv...")
+    uv_cmd = ensure_uv_available()
+    venv_python = get_venv_python()
+    sync_cmd = [uv_cmd, "sync", "--python", str(venv_python)]
+    if lock_file.exists():
+        sync_cmd.insert(2, "--frozen")
+
+    try:
+        result = subprocess.run(
+            sync_cmd,
+            cwd=str(skill_dir),
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT_UV_SYNC
+        )
+    except subprocess.TimeoutExpired:
+        print(f"⚠️ uv sync timed out after {TIMEOUT_UV_SYNC}s")
+        print("   Try running manually: uv sync")
+        sys.exit(1)
+
     if result.returncode != 0:
-        print(f"⚠️ pip install failed: {result.stderr}")
-        print("   Try running: pip install -r requirements.txt")
+        print(f"⚠️ uv sync failed: {result.stderr}")
+        print("   Try running manually: uv sync")
+        sys.exit(1)
     else:
-        # Save hash on success
         hash_file.write_text(current_hash)
-        print("✅ Python dependencies installed")
-        # Install Patchright browser if patchright was installed
+        print("✅ Python dependencies synced")
         _ensure_patchright_browser(venv_python)
 
 
@@ -367,12 +395,16 @@ def _prompt_auth_reauth():
 
 def ensure_google_auth():
     """Ensure Google authentication is valid and fresh, prompting setup if needed."""
-    skill_dir = Path(__file__).parent.parent
+    # config resolves the data dir (NBLM_DATA_DIR / ~/.nblm) and runs the
+    # one-time legacy data migration on import. Stdlib-only, so it is safe
+    # to import before the venv exists.
+    from config import GOOGLE_AUTH_DIR, GOOGLE_AUTH_INDEX, GOOGLE_AUTH_FILE_LEGACY
+
     TTL_DAYS = 10
 
     # Multi-account structure: check google/index.json first
-    index_file = skill_dir / "data" / "auth" / "google" / "index.json"
-    legacy_auth_file = skill_dir / "data" / "auth" / "google.json"
+    index_file = GOOGLE_AUTH_INDEX
+    legacy_auth_file = GOOGLE_AUTH_FILE_LEGACY
 
     if index_file.exists():
         # Multi-account mode: find active account's auth file
@@ -382,7 +414,7 @@ def ensure_google_auth():
             if active_index:
                 for acc in index_data.get("accounts", []):
                     if acc.get("index") == active_index:
-                        auth_file = skill_dir / "data" / "auth" / "google" / acc.get("file", "")
+                        auth_file = GOOGLE_AUTH_DIR / acc.get("file", "")
                         break
                 else:
                     auth_file = None
@@ -436,6 +468,20 @@ def should_skip_auth_check(script_name: str, script_args: list) -> bool:
     if script_name in SKIP_AUTH_CHECK:
         return True
 
+    # nblm CLI includes local/admin groups that should not force Google auth
+    if script_name == "nblm_cli.py" and script_args:
+        non_auth_groups = {
+            "login",
+            "alias",
+            "config",
+            "doctor",
+            "setup",
+            "skill",
+        }
+        first_positional = next((arg for arg in script_args if not arg.startswith("-")), None)
+        if first_positional in non_auth_groups:
+            return True
+
     return False
 
 
@@ -474,8 +520,8 @@ def main():
         else:
             print("✅ Python environment ready")
 
-        # Check pip dependencies
-        ensure_pip_deps()
+        # Check Python dependencies
+        ensure_python_deps()
 
         # Check Node.js deps
         node_modules = skill_dir / "node_modules"
@@ -491,10 +537,20 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python run.py <script_name> [args...]")
         print("\nAvailable scripts:")
+        print("  nblm_cli.py        - Unified grouped NotebookLM CLI")
         print("  ask_question.py    - Query NotebookLM")
         print("  notebook_manager.py - Manage notebook library")
-        print("  session_manager.py  - Manage sessions")
         print("  auth_manager.py     - Handle authentication")
+        print("  source_manager.py   - Source ingestion")
+        print("  artifact_manager.py - Artifact generation/management")
+        print("  research_manager.py - Research workflows")
+        print("  share_manager.py    - Sharing workflows")
+        print("  export_manager.py   - Docs/Sheets exports")
+        print("  alias_manager.py    - Alias management")
+        print("  config_manager.py   - User configuration")
+        print("  doctor_manager.py   - Diagnostics")
+        print("  setup_manager.py    - Setup add/remove/list")
+        print("  skill_manager.py    - Skill install/update")
         print("  cleanup_manager.py  - Clean up skill data")
         sys.exit(1)
 
@@ -523,7 +579,7 @@ def main():
 
     # Ensure venv exists and get Python executable
     venv_python = ensure_venv()
-    ensure_pip_deps()
+    ensure_python_deps()
     ensure_node_deps()
     ensure_owner_pid_env()
 

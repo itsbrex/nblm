@@ -6,7 +6,7 @@
 
 ### Your AI Coding Agent's Gateway to NotebookLM
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Agent Skill](https://img.shields.io/badge/Agent-Skill-purple.svg)](https://github.com/vercel-labs/add-skill)
 [![License](https://img.shields.io/github/license/magicseek/nblm)](LICENSE)
 
@@ -50,6 +50,50 @@ npx add-skill magicseek/nblm --global
 # Multiple agents
 npx add-skill magicseek/nblm -a claude-code -a cursor -a opencode
 ```
+
+### Local: Install from a local clone
+
+If you've already cloned this repo (or are developing on it), point `add-skill` at
+the local folder instead of the `magicseek/nblm` GitHub shorthand:
+
+```bash
+# From inside the repo (installs the current folder)
+npx add-skill .
+
+# From anywhere (absolute or relative path to the clone)
+npx add-skill ~/github/nblm
+npx add-skill ./nblm
+
+# Local install for a specific agent
+npx add-skill . -a claude-code
+
+# Local global installation (available across all projects)
+npx add-skill . --global
+
+# Local install for multiple agents
+npx add-skill . -a claude-code -a cursor -a opencode
+```
+
+### Updating a global install
+
+If the skill was registered from GitHub (e.g. `npx skills add -g magicseek/nblm -y`),
+the skills CLI can check for and apply updates:
+
+```bash
+# Preferred: authenticates via the gh CLI first, then falls back to
+# GITHUB_TOKEN / GH_TOKEN, then unauthenticated
+npm run skill:update
+
+# Equivalent manual invocation
+GITHUB_TOKEN="$(gh auth token)" npx skills update -g
+```
+
+Notes:
+- Updates track the **default branch** of the registered source repo.
+- The install folder is wiped and re-copied on every update. User data is safe:
+  it lives in `~/.nblm/data/` (or `NBLM_DATA_DIR`), outside the install folder.
+- Local-path installs (`npx add-skill .`) are not update-checkable — re-run the
+  local install instead.
 
 ### Alternative: Platform-specific initialization
 
@@ -96,11 +140,48 @@ This generates the appropriate skill/command files in your project directory (e.
 ### First Run
 
 On first use, nblm automatically:
-- Creates an isolated Python environment (`.venv`)
-- Installs Python and Node.js dependencies
+- Creates an isolated Python environment (`.venv`) via `uv venv`
+- Syncs Python dependencies via `uv sync`
+- Installs Node.js dependencies
 - Starts the agent-browser daemon as needed
 
 No manual setup required. If Playwright browsers are missing, run `npm run install-browsers` in the skill folder.
+
+Manual setup (if automatic setup fails):
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv sync
+npm install
+npm run install-browsers
+```
+
+### Dependency Migration to uv
+
+If you are migrating an older clone that still uses `requirements.txt`, use:
+
+```bash
+# 1) Create pyproject.toml
+uv init --bare
+
+# 2) Import runtime requirements
+uv add -r requirements.txt
+
+# 3) Import dev requirements (if you have them)
+uv add --dev -r requirements-dev.txt
+
+# Verify imports
+uv pip freeze
+
+# 4) Remove old requirements files
+rm requirements.txt requirements-dev.txt
+
+# 5) Ongoing dependency management
+uv add requests
+uv add --dev pytest
+uv remove requests
+```
 
 ---
 
@@ -151,6 +232,33 @@ Answers are source-grounded with citations from your uploaded documents.
 ---
 
 ## Commands
+
+### Unified `nblm_cli` syntax (grouped + verb aliases)
+
+`nblm` now supports grouped command routing (parity-style) while keeping legacy flat commands:
+
+```bash
+# Grouped style
+python scripts/run.py nblm_cli.py notebook list
+python scripts/run.py nblm_cli.py source add --url "https://example.com" --use-active
+python scripts/run.py nblm_cli.py query ask "What are the key risks?" --source-ids src1,src2
+python scripts/run.py nblm_cli.py research start "AI trends" --mode deep
+python scripts/run.py nblm_cli.py report create --wait --output ./report.md
+python scripts/run.py nblm_cli.py share status
+python scripts/run.py nblm_cli.py export create <artifact-id> --type docs
+
+# Verb-first aliases
+python scripts/run.py nblm_cli.py create report --wait --output ./report.md
+python scripts/run.py nblm_cli.py list notebook
+python scripts/run.py nblm_cli.py stale source --notebook-id <id>
+```
+
+Supported main groups include:
+`login`, `notebook`, `source`, `query`, `research`, `audio`, `report`, `quiz`,
+`flashcards`, `mindmap`, `slides`, `infographic`, `video`, `data-table`,
+`alias`, `config`, `doctor`, `setup`, `skill`, `share`, `export`, `download`.
+
+Legacy commands like `/nblm podcast`, `/nblm ask`, `/nblm upload-url`, and `/nblm source-refresh` remain supported as aliases.
 
 <details>
 <summary><strong>📚 Notebook Management</strong></summary>
@@ -269,14 +377,20 @@ nblm uses a hybrid approach combining API-first operations with browser automati
 |-----------|------|
 | **[notebooklm-py](https://github.com/teng-lin/notebooklm-py)** | Async Python client for NotebookLM API operations |
 | **[agent-browser](https://github.com/vercel-labs/agent-browser)** | Headless browser daemon for auth and non-API sources |
-| **scripts/run.py** | Entry point that auto-manages venv and dependencies |
+| **scripts/run.py** | Entry point that auto-manages `uv venv` + `uv sync` and dependencies |
 
-**Data storage** (in `data/`):
+Python dependency source of truth: `pyproject.toml` + `uv.lock`.
+
+**Data storage** (in `~/.nblm/data/` by default, override with `NBLM_DATA_DIR`):
 - `library.json` — Your notebook metadata (with account associations)
 - `auth/google/` — Multi-account Google authentication
   - `index.json` — Account index and active account
   - `<n>-<email>.json` — Per-account credentials
 - `auth/zlibrary.json` — Z-Library authentication state
+
+Data lives outside the skill install directory so skill updates (which wipe and
+re-copy the install folder) never destroy auth or your notebook library. A
+legacy in-repo `data/` folder is migrated automatically on first run.
 
 ---
 

@@ -9,9 +9,7 @@ import asyncio
 import json
 import argparse
 import re
-import sys
 import unicodedata
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from account_manager import AccountManager
@@ -47,12 +45,13 @@ class NotebookLibrary:
 
     def __init__(self):
         """Initialize the notebook library"""
-        # Store data within the skill directory
-        skill_dir = Path(__file__).parent.parent
-        self.data_dir = skill_dir / "data"
+        # Store data in the shared data directory (NBLM_DATA_DIR / ~/.nblm)
+        from config import DATA_DIR, LIBRARY_FILE
+
+        self.data_dir = DATA_DIR
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self.library_file = self.data_dir / "library.json"
+        self.library_file = LIBRARY_FILE
         self.notebooks: Dict[str, Dict[str, Any]] = {}
         self.active_notebook_id: Optional[str] = None
 

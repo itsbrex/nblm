@@ -11,7 +11,7 @@ Complete API documentation for all NotebookLM skill modules.
 python scripts/run.py [script_name].py [arguments]
 
 # ❌ WRONG:
-python scripts/[script_name].py [arguments]  # Will fail without venv!
+python scripts/[script_name].py [arguments]  # Will fail without uv-managed env!
 ```
 
 ## Core Scripts
@@ -205,8 +205,8 @@ python scripts/run.py ask_question.py --question "..."
 
 **Automatic actions:**
 1. Creates `.venv` if missing
-2. Installs dependencies
-3. Activates environment
+2. Syncs dependencies with `uv sync`
+3. Uses the `.venv` interpreter
 4. Executes target script
 
 ## Python API Usage
@@ -227,10 +227,10 @@ result = subprocess.run([
 answer = result.stdout
 ```
 
-### Direct imports (after venv exists)
+### Direct imports (after `.venv` exists)
 
 ```python
-# Only works if venv is already created and activated
+# Only works if `.venv` is already created and activated
 from notebook_manager import NotebookLibrary
 from auth_manager import AuthManager
 

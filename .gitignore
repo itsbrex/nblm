@@ -83,3 +83,9 @@ prpm.lock
 
 # Documentation plans (internal)
 docs/plans/
+scripts/plans.mjs
+PLAN.md
+
+# Runtime session + local tooling state
+.instance/
+.specstory/

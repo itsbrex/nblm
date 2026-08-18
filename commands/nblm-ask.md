@@ -7,7 +7,11 @@ allowed-tools: Bash
 Ask a question to NotebookLM and get a source-grounded answer with citations.
 
 $IF($ARGUMENTS,
-  Run: !`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py ask_question.py --question "$ARGUMENTS"`
+  Preferred grouped command:
+  !`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py nblm_cli.py query ask "$ARGUMENTS"`
+
+  Legacy fallback:
+  !`cd ${CLAUDE_PLUGIN_ROOT} && python scripts/run.py ask_question.py --question "$ARGUMENTS"`
 
   Present the answer clearly. If the answer suggests follow-up questions, offer to ask them.,
 

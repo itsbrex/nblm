@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from config import (
     GOOGLE_AUTH_DIR,
@@ -20,6 +20,19 @@ from config import (
     get_agent_id,
     get_agent_active_account_file,
 )
+
+
+def validate_email(email: str) -> Tuple[bool, str]:
+    """Validate an email address.
+
+    Returns:
+        Tuple of (is_valid, error_message). error_message is empty if valid.
+    """
+    if not email or not email.strip():
+        return False, "Email cannot be empty"
+    if "@" not in email:
+        return False, "Email must contain '@' character"
+    return True, ""
 
 
 @dataclass
@@ -256,8 +269,14 @@ class AccountManager:
             The newly created AccountInfo
 
         Raises:
-            ValueError: If account already exists
+            ValueError: If account already exists or email is invalid
         """
+        is_valid, error_msg = validate_email(email)
+        if not is_valid:
+            raise ValueError(error_msg)
+
+        email = email.strip()
+
         if self.account_exists(email):
             raise ValueError(f"Account already exists: {email}")
 

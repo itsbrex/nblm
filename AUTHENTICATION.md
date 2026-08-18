@@ -1,14 +1,14 @@
 # Authentication Notes
 
-This skill uses the `agent-browser` daemon to automate NotebookLM. Authentication is handled by a visible browser session and kept in memory by the daemon while it runs. NotebookLM API credentials (token + cookie header) are persisted to `data/auth/google.json` on demand, or supplied via environment variables.
+This skill uses the `agent-browser` daemon to automate NotebookLM. Authentication is handled by a visible browser session and kept in memory by the daemon while it runs. NotebookLM API credentials (token + cookie header) are persisted to `auth/google.json` under the data directory (`~/.nblm/data/` by default, override with `NBLM_DATA_DIR`) on demand, or supplied via environment variables.
 
 ## How Authentication Works
 
 - `auth_manager.py setup` launches a headed browser via the daemon.
 - You log in to Google manually.
 - The daemon keeps cookies/storage in memory for subsequent commands.
-- Cookies and local storage are cached to `data/agent_browser/storage_state.json` for reuse after daemon restarts.
-- NotebookLM API credentials are stored in `data/auth/google.json`:
+- Cookies and local storage are cached to `agent_browser/storage_state.json` (under the data dir) for reuse after daemon restarts.
+- NotebookLM API credentials are stored in `auth/google.json` (under the data dir):
   - `notebooklm_auth_token`
   - `notebooklm_cookies`
 - If cached NotebookLM credentials are older than 10 days, the skill attempts an HTTP refresh using stored Google cookies before falling back to the daemon.
@@ -19,7 +19,7 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 - Set `AGENT_BROWSER_OWNER_PID` to stop the daemon when your agent process exits.
 - `scripts/run.py` sets `AGENT_BROWSER_OWNER_PID` to its parent PID by default; override it if your agent runs differently.
 - Stopping the daemon ends the active session and requires re-authentication.
-- The skill stores minimal metadata in `data/auth_info.json` and `data/agent_browser/session_id`.
+- The skill stores minimal metadata in `auth_info.json` and `agent_browser/session_id` under the data dir.
 
 ## Troubleshooting Authentication
 
@@ -64,5 +64,5 @@ This skill uses the `agent-browser` daemon to automate NotebookLM. Authenticatio
 ## Security Notes
 
 - All browser activity runs locally.
-- The `data/` directory contains sensitive auth metadata. Never commit it.
+- The data directory (`~/.nblm/data/` by default) contains sensitive auth metadata. It lives outside the repo; if a legacy in-repo `data/` still exists, never commit it.
 - Use a dedicated Google account for automation if you prefer extra isolation.

@@ -109,10 +109,10 @@ class AuthManager:
         }
     }
 
-    def __init__(self):
+    def __init__(self, account_manager: Optional[AccountManager] = None):
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         AUTH_DIR.mkdir(parents=True, exist_ok=True)
-        self.account_manager = AccountManager()
+        self.account_manager = account_manager if account_manager is not None else AccountManager()
         # Ensure symlink is up-to-date after migration (silent)
         self._ensure_storage_state_symlink(quiet=True)
 
@@ -229,7 +229,17 @@ class AuthManager:
         # Get active account auth file
         active_auth_file = self.account_manager.get_active_auth_file()
         if not active_auth_file or not active_auth_file.exists():
-            return
+            # Fall back to legacy single-account auth file (e.g., data/auth/google.json)
+            legacy_auth_file = self._auth_file("google")
+            if legacy_auth_file.exists():
+                active_auth_file = legacy_auth_file
+            else:
+                # No usable auth available; remove any stale storage_state.json
+                if storage_state_path.exists() or storage_state_path.is_symlink():
+                    storage_state_path.unlink()
+                    if not quiet:
+                        print("   ✓ Removed stale storage_state.json (no active auth)")
+                return
 
         # Remove existing symlink or file if it exists
         if storage_state_path.exists() or storage_state_path.is_symlink():
@@ -316,13 +326,13 @@ class AuthManager:
             print("   Chrome for Testing is blocked by Google's security checks.")
             print()
             print("   To install Patchright:")
-            print("   pip install patchright && patchright install chromium")
+            print("   uv sync && uv run patchright install chromium")
             return False
         except Exception as e:
             print(f"❌ Patchright import error: {e}")
             print()
             print("   Please reinstall Patchright:")
-            print("   pip install --upgrade patchright && patchright install chromium")
+            print("   uv sync && uv run patchright install chromium")
             return False
 
         try:
@@ -362,8 +372,8 @@ class AuthManager:
             print()
             print("   Please ensure:")
             print("   1. Google Chrome is installed on your system")
-            print("   2. Patchright is properly installed: pip install patchright")
-            print("   3. Patchright browser is installed: patchright install chromium")
+            print("   2. Patchright is properly installed: uv sync")
+            print("   3. Patchright browser is installed: uv run patchright install chromium")
             return False
 
     def _setup_with_agent_browser(self, service: str):

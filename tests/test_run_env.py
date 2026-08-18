@@ -70,6 +70,18 @@ class RunEnvTests(unittest.TestCase):
             mock.patch.object(run, "_get_process_info", side_effect=fake_get_process_info):
             self.assertEqual(run._detect_owner_pid(), 150)
 
+    def test_should_skip_auth_for_local_manager_scripts(self):
+        self.assertTrue(run.should_skip_auth_check("alias_manager.py", []))
+        self.assertTrue(run.should_skip_auth_check("config_manager.py", []))
+        self.assertTrue(run.should_skip_auth_check("doctor_manager.py", []))
+
+    def test_should_skip_auth_for_nblm_cli_admin_groups(self):
+        self.assertTrue(run.should_skip_auth_check("nblm_cli.py", ["login"]))
+        self.assertTrue(run.should_skip_auth_check("nblm_cli.py", ["alias", "list"]))
+        self.assertTrue(run.should_skip_auth_check("nblm_cli.py", ["--json", "alias", "list"]))
+        self.assertTrue(run.should_skip_auth_check("nblm_cli.py", ["config", "show"]))
+        self.assertFalse(run.should_skip_auth_check("nblm_cli.py", ["notebook", "list"]))
+
 
 if __name__ == "__main__":
     unittest.main()

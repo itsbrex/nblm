@@ -24,8 +24,10 @@ class CleanupManager:
     def __init__(self):
         """Initialize the cleanup manager"""
         # Skill directory paths
+        from config import DATA_DIR
+
         self.skill_dir = Path(__file__).parent.parent
-        self.data_dir = self.skill_dir / "data"
+        self.data_dir = DATA_DIR
 
     def get_cleanup_paths(self, preserve_library: bool = False) -> Dict[str, Any]:
         """

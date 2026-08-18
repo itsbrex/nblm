@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `NBLM_DATA_DIR` environment variable to override the user data directory
+- `npm run skill:update` — updates the globally installed skill via `npx skills update -g`, resolving GitHub auth from the `gh` CLI first, then `GITHUB_TOKEN`/`GH_TOKEN`
+- Automatic one-time migration of the legacy in-repo `data/` directory into the new data directory
+
+### Changed
+- **User data moved out of the skill directory** to `~/.nblm/data/` by default, so global skill updates (which wipe and re-copy the install folder) no longer destroy auth credentials or the notebook library
+- Migrated Python environment management to uv (`uv venv` + `uv sync`) across runtime bootstrap scripts
+- Replaced pip-based dependency install guidance with uv commands in docs and auth troubleshooting output
+- Removed `requirements.txt` in favor of `pyproject.toml` + `uv.lock`
+
 ## [2.1.0] - 2026-01-24
 
 ### Changed

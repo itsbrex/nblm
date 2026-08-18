@@ -96,11 +96,22 @@ python $env:USERPROFILE\.nblm\scripts\run.py init --list
 ### 首次运行
 
 首次使用时，nblm 会自动：
-- 创建隔离的 Python 环境（`.venv`）
-- 安装 Python 和 Node.js 依赖
+- 通过 `uv venv` 创建隔离的 Python 环境（`.venv`）
+- 通过 `uv sync` 同步 Python 依赖
+- 安装 Node.js 依赖
 - 按需启动 agent-browser 守护进程
 
 无需手动设置。如果缺少 Playwright 浏览器，在技能文件夹中运行 `npm run install-browsers`。
+
+手动设置（自动流程失败时）：
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv sync
+npm install
+npm run install-browsers
+```
 
 ---
 
@@ -267,7 +278,7 @@ nblm 采用混合方式，优先使用 API 操作，浏览器自动化作为后�
 | **[agent-browser](https://github.com/vercel-labs/agent-browser)** | 用于认证和非 API 来源的无头浏览器守护进程 |
 | **scripts/run.py** | 自动管理虚拟环境和依赖的入口点 |
 
-**数据存储**（在 `data/` 目录）：
+**数据存储**（默认在 `~/.nblm/data/` 目录，可用 `NBLM_DATA_DIR` 覆盖）：
 - `library.json` — 你的笔记本元数据
 - `auth/google.json` — Google 认证状态
 - `auth/zlibrary.json` — Z-Library 认证状态

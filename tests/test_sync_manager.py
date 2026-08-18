@@ -53,15 +53,15 @@ class SyncManagerFolderTests(unittest.TestCase):
     """Tests for SyncManager folder scanning and tracking file location."""
 
     def test_tracking_file_in_data_sync_dir(self):
-        """Test that tracking file is stored in data/sync/, not in synced folder."""
+        """Test that tracking file is stored in the data dir's sync/, not in synced folder."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mgr = SyncManager(tmpdir)
             tracking_path = Path(mgr.tracking_file)
             # Tracking file path should be absolute
             self.assertTrue(tracking_path.is_absolute())
-            # Tracking file should be in the repository's data/sync directory, not in tmpdir
-            repo_root = Path(__file__).resolve().parents[1]
-            expected_sync_dir = repo_root / "data" / "sync"
+            # Tracking file should be in the configured data dir's sync/, not in tmpdir
+            from config import DATA_DIR
+            expected_sync_dir = DATA_DIR / "sync"
             self.assertEqual(tracking_path.parent, expected_sync_dir)
             # Should NOT be in the synced folder
             self.assertNotIn(Path(tmpdir).resolve(), tracking_path.parents)

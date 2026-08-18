@@ -395,12 +395,16 @@ def _prompt_auth_reauth():
 
 def ensure_google_auth():
     """Ensure Google authentication is valid and fresh, prompting setup if needed."""
-    skill_dir = Path(__file__).parent.parent
+    # config resolves the data dir (NBLM_DATA_DIR / ~/.nblm) and runs the
+    # one-time legacy data migration on import. Stdlib-only, so it is safe
+    # to import before the venv exists.
+    from config import GOOGLE_AUTH_DIR, GOOGLE_AUTH_INDEX, GOOGLE_AUTH_FILE_LEGACY
+
     TTL_DAYS = 10
 
     # Multi-account structure: check google/index.json first
-    index_file = skill_dir / "data" / "auth" / "google" / "index.json"
-    legacy_auth_file = skill_dir / "data" / "auth" / "google.json"
+    index_file = GOOGLE_AUTH_INDEX
+    legacy_auth_file = GOOGLE_AUTH_FILE_LEGACY
 
     if index_file.exists():
         # Multi-account mode: find active account's auth file
@@ -410,7 +414,7 @@ def ensure_google_auth():
             if active_index:
                 for acc in index_data.get("accounts", []):
                     if acc.get("index") == active_index:
-                        auth_file = skill_dir / "data" / "auth" / "google" / acc.get("file", "")
+                        auth_file = GOOGLE_AUTH_DIR / acc.get("file", "")
                         break
                 else:
                     auth_file = None

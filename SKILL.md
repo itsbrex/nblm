@@ -662,7 +662,7 @@ Synthesize and respond to user
 **Important directories and files:**
 
 - `scripts/` - All automation scripts (ask_question.py, notebook_manager.py, etc.)
-- `data/` - Local storage for authentication and notebook library
+- `~/.nblm/data/` - Local storage for authentication and notebook library (override with `NBLM_DATA_DIR`; survives skill updates)
 - `references/` - Extended documentation:
   - `api_reference.md` - Detailed API documentation for all scripts
   - `troubleshooting.md` - Common issues and solutions

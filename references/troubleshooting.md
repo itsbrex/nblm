@@ -235,10 +235,10 @@ JSON decode error when listing notebooks
 **Solution:**
 ```bash
 # Backup current library
-cp ~/.claude/skills/notebooklm/data/library.json library.backup.json
+cp ~/.nblm/data/library.json library.backup.json
 
 # Reset library
-rm ~/.claude/skills/notebooklm/data/library.json
+rm ~/.nblm/data/library.json
 
 # Re-add notebooks
 python scripts/run.py notebook_manager.py add --url ... --name ...
@@ -248,7 +248,7 @@ python scripts/run.py notebook_manager.py add --url ... --name ...
 **Solution:**
 ```bash
 # Check disk usage
-df -h ~/.claude/skills/notebooklm/data/
+df -h ~/.nblm/data/
 
 # Clean up
 python scripts/run.py cleanup_manager.py --confirm --preserve-library
@@ -290,8 +290,8 @@ agent-browser screenshot --full error.png
 pkill -f chromium
 
 # Backup library if exists
-if [ -f ~/.claude/skills/notebooklm/data/library.json ]; then
-    cp ~/.claude/skills/notebooklm/data/library.json ~/library.backup.json
+if [ -f ~/.nblm/data/library.json ]; then
+    cp ~/.nblm/data/library.json ~/library.backup.json
 fi
 
 # Clean everything
@@ -306,8 +306,8 @@ python scripts/run.py auth_manager.py setup
 
 # Restore library if backup exists
 if [ -f ~/library.backup.json ]; then
-    mkdir -p ~/.claude/skills/notebooklm/data/
-    cp ~/library.backup.json ~/.claude/skills/notebooklm/data/library.json
+    mkdir -p ~/.nblm/data/
+    cp ~/library.backup.json ~/.nblm/data/library.json
 fi
 ```
 
@@ -369,7 +369,7 @@ python scripts/run.py auth_manager.py status
 python scripts/run.py notebook_manager.py list | head -5
 
 # Check data directory
-ls -la ~/.claude/skills/notebooklm/data/
+ls -la ~/.nblm/data/
 ```
 
 ### Common questions

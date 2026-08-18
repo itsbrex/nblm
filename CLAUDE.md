@@ -155,7 +155,7 @@ scripts/zlibrary/
 ├── downloader.py         # Z-Library download automation
 └── epub_converter.py     # EPUB to Markdown conversion
 
-data/                     # Git-ignored local storage
+~/.nblm/data/             # User data (NBLM_DATA_DIR overrides; legacy in-repo data/ is migrated)
 ├── library.json          # Notebook metadata (with account associations)
 ├── auth/                 # Per-service auth state
 │   ├── google/           # Multi-account Google auth
@@ -231,8 +231,8 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
 - Authentication requires a visible browser session (`--show-browser`)
 - Free tier rate limit: 50 queries/day per Google account
 - **Multi-account support:** Add multiple Google accounts to bypass rate limits
-- `data/` directory contains sensitive auth data - never commit
-- `data/auth/google/` stores per-account credentials with email in filename
+- User data lives in `~/.nblm/data/` (override with `NBLM_DATA_DIR`) — outside the skill install dir so skill updates never wipe it; a legacy in-repo `data/` is migrated automatically and must never be committed
+- `auth/google/` (under the data dir) stores per-account credentials with email in filename
 - `NOTEBOOKLM_AUTH_TOKEN` + `NOTEBOOKLM_COOKIES` allow API fallback if the daemon cannot start
 - Each question is independent (stateless model)
 - Answers include follow-up prompt to encourage comprehensive research

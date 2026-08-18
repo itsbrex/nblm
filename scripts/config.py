@@ -7,11 +7,71 @@ from pathlib import Path
 from typing import Optional
 import os
 import re
+import shutil
+import sys
 import tempfile
 
 # Paths
 SKILL_DIR = Path(__file__).parent.parent
-DATA_DIR = SKILL_DIR / "data"
+
+# Legacy in-repo data directory (pre-NBLM_DATA_DIR). Kept for one-time migration.
+LEGACY_DATA_DIR = SKILL_DIR / "data"
+
+
+def _resolve_data_dir() -> Path:
+    """Resolve the user data directory.
+
+    Priority: NBLM_DATA_DIR env var > ~/.nblm/data (default).
+
+    Data lives outside the skill install directory so global skill
+    updates (e.g. `npx skills update -g`, which wipe and re-copy the
+    install folder) never destroy auth credentials or the notebook
+    library. For manual clones at ~/.nblm the default resolves to the
+    same data/ folder as before, so nothing moves.
+    """
+    env_dir = os.environ.get("NBLM_DATA_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser()
+    return Path.home() / ".nblm" / "data"
+
+
+def _migrate_legacy_data(data_dir: Path) -> None:
+    """One-time copy of the legacy in-repo data/ into the new data dir.
+
+    Copies only entries missing at the destination and never deletes
+    the legacy directory, so the migration is safe to re-run.
+    """
+    try:
+        if not LEGACY_DATA_DIR.is_dir():
+            return
+        if data_dir.resolve() == LEGACY_DATA_DIR.resolve():
+            return
+
+        migrated = []
+        data_dir.mkdir(parents=True, exist_ok=True)
+        for item in LEGACY_DATA_DIR.iterdir():
+            target = data_dir / item.name
+            if target.exists():
+                continue
+            if item.is_dir():
+                shutil.copytree(item, target, symlinks=True)
+            else:
+                shutil.copy2(item, target)
+            migrated.append(item.name)
+
+        if migrated:
+            print(
+                f"📦 Migrated legacy data from {LEGACY_DATA_DIR} to {data_dir}: "
+                + ", ".join(sorted(migrated)),
+                file=sys.stderr,
+            )
+    except OSError as exc:
+        print(f"⚠️ Legacy data migration skipped: {exc}", file=sys.stderr)
+
+
+DATA_DIR = _resolve_data_dir()
+_migrate_legacy_data(DATA_DIR)
+
 AUTH_INFO_FILE = DATA_DIR / "auth_info.json"
 AUTH_DIR = DATA_DIR / "auth"
 GOOGLE_AUTH_FILE = AUTH_DIR / "google.json"

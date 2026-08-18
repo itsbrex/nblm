@@ -51,6 +51,50 @@ npx add-skill magicseek/nblm --global
 npx add-skill magicseek/nblm -a claude-code -a cursor -a opencode
 ```
 
+### Local: Install from a local clone
+
+If you've already cloned this repo (or are developing on it), point `add-skill` at
+the local folder instead of the `magicseek/nblm` GitHub shorthand:
+
+```bash
+# From inside the repo (installs the current folder)
+npx add-skill .
+
+# From anywhere (absolute or relative path to the clone)
+npx add-skill ~/github/nblm
+npx add-skill ./nblm
+
+# Local install for a specific agent
+npx add-skill . -a claude-code
+
+# Local global installation (available across all projects)
+npx add-skill . --global
+
+# Local install for multiple agents
+npx add-skill . -a claude-code -a cursor -a opencode
+```
+
+### Updating a global install
+
+If the skill was registered from GitHub (e.g. `npx skills add -g magicseek/nblm -y`),
+the skills CLI can check for and apply updates:
+
+```bash
+# Preferred: authenticates via the gh CLI first, then falls back to
+# GITHUB_TOKEN / GH_TOKEN, then unauthenticated
+npm run skill:update
+
+# Equivalent manual invocation
+GITHUB_TOKEN="$(gh auth token)" npx skills update -g
+```
+
+Notes:
+- Updates track the **default branch** of the registered source repo.
+- The install folder is wiped and re-copied on every update. User data is safe:
+  it lives in `~/.nblm/data/` (or `NBLM_DATA_DIR`), outside the install folder.
+- Local-path installs (`npx add-skill .`) are not update-checkable — re-run the
+  local install instead.
+
 ### Alternative: Platform-specific initialization
 
 If symlinks created by `add-skill` don't work well in your environment (e.g., Cursor, Windows), you can generate platform-specific files directly:
@@ -337,12 +381,16 @@ nblm uses a hybrid approach combining API-first operations with browser automati
 
 Python dependency source of truth: `pyproject.toml` + `uv.lock`.
 
-**Data storage** (in `data/`):
+**Data storage** (in `~/.nblm/data/` by default, override with `NBLM_DATA_DIR`):
 - `library.json` — Your notebook metadata (with account associations)
 - `auth/google/` — Multi-account Google authentication
   - `index.json` — Account index and active account
   - `<n>-<email>.json` — Per-account credentials
 - `auth/zlibrary.json` — Z-Library authentication state
+
+Data lives outside the skill install directory so skill updates (which wipe and
+re-copy the install folder) never destroy auth or your notebook library. A
+legacy in-repo `data/` folder is migrated automatically on first run.
 
 ---
 

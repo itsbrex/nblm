@@ -278,7 +278,7 @@ nblm 采用混合方式，优先使用 API 操作，浏览器自动化作为后�
 | **[agent-browser](https://github.com/vercel-labs/agent-browser)** | 用于认证和非 API 来源的无头浏览器守护进程 |
 | **scripts/run.py** | 自动管理虚拟环境和依赖的入口点 |
 
-**数据存储**（在 `data/` 目录）：
+**数据存储**（默认在 `~/.nblm/data/` 目录，可用 `NBLM_DATA_DIR` 覆盖）：
 - `library.json` — 你的笔记本元数据
 - `auth/google.json` — Google 认证状态
 - `auth/zlibrary.json` — Z-Library 认证状态

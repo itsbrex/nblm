@@ -203,8 +203,8 @@ python scripts/run.py source_manager.py add --url "https://zh.zlib.li/book/..."
 
 - Authentication requires a visible browser session (`--show-browser`)
 - Free tier rate limit: 50 queries/day
-- `data/` directory contains sensitive auth data - never commit
-- `data/auth/google.json` includes NotebookLM API token + cookies
+- User data lives in `~/.nblm/data/` (override with `NBLM_DATA_DIR`) — outside the skill install dir so skill updates never wipe it; a legacy in-repo `data/` is migrated automatically and must never be committed
+- `auth/google.json` (under the data dir) includes NotebookLM API token + cookies
 - `NOTEBOOKLM_AUTH_TOKEN` + `NOTEBOOKLM_COOKIES` allow API fallback if the daemon cannot start
 - Each question is independent (stateless model)
 - Answers include follow-up prompt to encourage comprehensive research

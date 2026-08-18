@@ -252,7 +252,7 @@ def check_api_usage(api_endpoint):
 
 ### 5. Security
 - Use dedicated Google account
-- Never commit data/ directory
+- User data lives in `~/.nblm/data/` (or `NBLM_DATA_DIR`); never commit a legacy in-repo `data/` directory
 - Regularly refresh auth
 - Track all access
 
